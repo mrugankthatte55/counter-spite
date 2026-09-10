@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Counter Spite</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0d10; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #e8e8e8; user-select: none; }
+      canvas { display: block; }
+      #hud { position: fixed; inset: 0; pointer-events: none; }
+      #crosshair { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
+      #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #6cff6c; box-shadow: 0 0 2px #000; }
+      #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+      #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+      #crosshair .gap { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; background: transparent; transform: translate(-50%, -50%); outline: 4px solid rgba(0,0,0,0); }
+      #crosshair .dot { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%); background: #0b0d10; }
+      #hitmarker { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; transition: opacity 0.08s; }
+      #hitmarker::before, #hitmarker::after { content: ""; position: absolute; background: #fff; }
+      #hitmarker::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+      #hitmarker::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+      #hitmarker.kill::before, #hitmarker.kill::after { background: #ff3b3b; }
+      #damage { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(255,0,0,0) 45%, rgba(200,0,0,0.55) 100%); opacity: 0; transition: opacity 0.1s; }
+      .panel { position: absolute; background: rgba(10, 12, 16, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px 14px; backdrop-filter: blur(4px); }
+      #health { left: 20px; bottom: 20px; font-size: 32px; font-weight: 700; min-width: 140px; }
+      #health .label { font-size: 11px; letter-spacing: 2px; opacity: 0.6; font-weight: 500; }
+      #health.low { color: #ff4d4d; }
+      #ammo { right: 20px; bottom: 20px; text-align: right; font-size: 32px; font-weight: 700; min-width: 180px; }
+      #ammo .label { font-size: 11px; letter-spacing: 2px; opacity: 0.6; font-weight: 500; }
+      #ammo .reserve { font-size: 18px; opacity: 0.7; }
+      #ammo .weapon { font-size: 12px; opacity: 0.8; letter-spacing: 1px; }
+      #score { top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: center; font-size: 20px; font-weight: 700; padding: 8px 18px; }
+      #score .ct { color: #6fa8ff; }
+      #score .t { color: #ffb15c; }
+      #score .timer { font-size: 18px; font-weight: 500; opacity: 0.9; }
+      #killfeed { top: 16px; right: 20px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+      #killfeed div { background: rgba(10,12,16,0.65); padding: 4px 10px; border-radius: 4px; font-size: 13px; border: 1px solid rgba(255,255,255,0.06); }
+      #killfeed .you { color: #6fa8ff; font-weight: 600; }
+      #killfeed .bot { color: #ffb15c; font-weight: 600; }
+      #message { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); font-size: 40px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 2px 12px rgba(0,0,0,0.9); opacity: 0; transition: opacity 0.2s; text-align: center; }
+      #message small { display: block; font-size: 16px; font-weight: 500; letter-spacing: 1px; opacity: 0.8; margin-top: 8px; }
+      #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 7, 10, 0.82); z-index: 10; cursor: pointer; }
+      #overlay .card { text-align: center; max-width: 520px; padding: 40px; }
+      #overlay h1 { font-size: 56px; letter-spacing: 6px; font-weight: 900; margin-bottom: 6px; background: linear-gradient(90deg, #6fa8ff, #ffb15c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      #overlay .sub { opacity: 0.7; margin-bottom: 28px; letter-spacing: 2px; font-size: 13px; }
+      #overlay .btn { display: inline-block; padding: 14px 40px; border: 2px solid #6fa8ff; border-radius: 4px; font-weight: 700; letter-spacing: 2px; font-size: 16px; transition: background 0.15s; }
+      #overlay .btn:hover { background: rgba(111,168,255,0.2); }
+      #overlay .keys { margin-top: 28px; font-size: 13px; opacity: 0.7; line-height: 1.9; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; text-align: left; }
+      #overlay .keys b { color: #fff; display: inline-block; min-width: 84px; }
+      #overlay .stats { margin-top: 18px; font-size: 14px; opacity: 0.85; }
+      #overlay .settings { margin-top: 16px; font-size: 12px; letter-spacing: 2px; opacity: 0.85; }
+      #overlay select { background: #14181f; color: #e8e8e8; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 6px 10px; font-size: 13px; letter-spacing: 0; margin-left: 6px; cursor: pointer; }
+      #fps { position: absolute; top: 16px; left: 16px; font-size: 12px; opacity: 0.5; font-family: monospace; }
+      #scope { position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(0,0,0,0) 0, rgba(0,0,0,0) 32vmin, rgba(0,0,0,0.97) 33vmin); }
+      #scope::before, #scope::after { content: ""; position: absolute; background: rgba(0,0,0,0.85); }
+      #scope::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
+      #scope::after { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-50%); }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <div class="card">
+        <h1>COUNTER SPITE</h1>
+        <div class="sub">ROUND-BASED BROWSER FPS &mdash; COUNTER-TERRORISTS VS BOTS</div>
+        <div class="btn" id="playBtn">CLICK TO PLAY</div>
+        <div class="stats" id="menuStats"></div>
+        <div class="settings"><label for="quality">GRAPHICS</label> <select id="quality"><option value="high">High (AO + bloom)</option><option value="medium">Medium (bloom)</option><option value="low">Low</option></select></div>
+        <div class="keys">
+          <div><b>WASD</b> Move</div><div><b>Mouse</b> Look / Shoot</div>
+          <div><b>Shift</b> Walk</div><div><b>R</b> Reload</div>
+          <div><b>Ctrl</b> Crouch</div><div><b>1 / 2 / 3</b> Weapons</div>
+          <div><b>Space</b> Jump</div><div><b>Right click</b> Scope (AWP)</div>
+          <div><b>Esc</b> Pause</div><div><b>Scroll</b> Switch weapon</div>
+        </div>
+      </div>
+    </div>
+    <div id="hud">
+      <div id="damage"></div>
+      <div id="scope" class="hidden"></div>
+      <div id="crosshair"><div class="dot"></div></div>
+      <div id="hitmarker"></div>
+      <div id="fps"></div>
+      <div id="score" class="panel"><span class="ct">CT 0</span><span class="timer">5:00</span><span class="t">T 0</span></div>
+      <div id="killfeed"></div>
+      <div id="health" class="panel"><div class="label">HEALTH</div><span class="value">100</span></div>
+      <div id="ammo" class="panel"><div class="weapon">AK-47</div><span class="mag">30</span> <span class="reserve">/ 90</span><div class="label">AMMO</div></div>
+      <div id="message"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
