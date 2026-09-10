@@ -7,7 +7,6 @@ A Counter-Strike style first-person shooter that runs in the browser. No backend
 - [Vite](https://vitejs.dev) + TypeScript for the build
 - [Three.js](https://threejs.org) for rendering: PBR materials with procedurally generated color, normal and roughness maps, a physical sky with image-based environment lighting, soft shadows, ground-truth ambient occlusion and bloom post-processing
 - WebAudio for procedural sound effects
-- Static output in `dist/`, deployable to Vercel as-is (`vercel.json` is included)
 
 ## Run locally
 
@@ -52,32 +51,3 @@ The menu has a graphics selector, saved in the browser:
 - **High**: ambient occlusion, bloom, 4K shadow map
 - **Medium**: bloom, 2K shadow map
 - **Low**: no post-processing, 1K shadow map
-
-## Deploy to Vercel
-
-```sh
-npm run build      # type-checks then builds into dist/
-npx vercel         # or import the repo in the Vercel dashboard
-```
-
-Vercel auto-detects Vite. Build command `npm run build`, output directory `dist`.
-
-## Project layout
-
-```
-index.html        HUD and menu markup + styles
-src/main.ts       Scene setup, game loop, rounds, shooting
-src/player.ts     First-person controller (movement, collision, recoil)
-src/weapon.ts     Weapon definitions, viewmodels, ammo, spread
-src/enemy.ts      Bot AI (patrol / chase / attack), hitboxes
-src/map.ts        Level geometry, colliders, spawns, waypoints
-src/effects.ts    Tracers, sparks, bullet decals
-src/hud.ts        DOM HUD updates, radar, kill feed
-src/menu.ts       Main menu panels (loadout, rankings, controls, settings)
-src/theme.ts      Colorways, settings and career stats persistence
-src/audio.ts      Procedural WebAudio sound effects
-src/textures.ts   Procedural PBR texture generators (bricks, plaster, concrete, wood, sand, metal, fabric)
-src/input.ts      Keyboard, mouse and pointer lock
-```
-
-Append `?autoplay` to the URL to run the game without pointer lock (used for automated smoke tests); add `&gfx=high|medium|low` to force a quality level.
