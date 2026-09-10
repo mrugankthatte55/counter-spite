@@ -28,13 +28,22 @@ Open the URL Vite prints, click **Play** to lock the mouse.
 | Ctrl | Crouch |
 | Space | Jump |
 | R | Reload |
-| 1 / 2 / 3 or scroll | AK-47 / USP-S / AWP |
+| 1 / 2 or scroll | Primary / secondary weapon |
 | Right click or Q | Scope (AWP only) |
-| Esc | Pause |
+| F | Toggle FPS counter |
+| Esc | Menu |
+
+## Menu
+
+- **Play** locks the mouse and drops you into the round.
+- **Loadout** picks the primary weapon (AK-47 or AWP). The USP-S is always the secondary.
+- **Rankings** shows career and session stats, stored in the browser.
+- **Controls** lists the key bindings.
+- **Settings** has mouse sensitivity, master volume, graphics quality, and the colorway. The pill in the top-right corner cycles colorways too: neon lime, deep blue, toxic purple, crimson.
 
 ## Gameplay
 
-You play Counter-Terrorist against five Terrorist bots on a dust-style arena. Rounds last five minutes; the team with the most kills wins. Headshots deal bonus damage. Bots patrol waypoints, react to line of sight and being shot, strafe while fighting and respawn after death.
+You play Counter-Terrorist against five Terrorist bots on a dust-style arena. Rounds last five minutes; the team with the most kills wins. Headshots deal bonus damage. You spawn with 100 health and 100 armor; armor absorbs half of incoming damage until it runs out. Bots patrol waypoints, react to line of sight and being shot, strafe while fighting and respawn after death. The radar shows the map and marks bots that have fired in the last few seconds.
 
 ## Graphics quality
 
@@ -63,7 +72,9 @@ src/weapon.ts     Weapon definitions, viewmodels, ammo, spread
 src/enemy.ts      Bot AI (patrol / chase / attack), hitboxes
 src/map.ts        Level geometry, colliders, spawns, waypoints
 src/effects.ts    Tracers, sparks, bullet decals
-src/hud.ts        DOM HUD updates
+src/hud.ts        DOM HUD updates, radar, kill feed
+src/menu.ts       Main menu panels (loadout, rankings, controls, settings)
+src/theme.ts      Colorways, settings and career stats persistence
 src/audio.ts      Procedural WebAudio sound effects
 src/textures.ts   Procedural PBR texture generators (bricks, plaster, concrete, wood, sand, metal, fabric)
 src/input.ts      Keyboard, mouse and pointer lock

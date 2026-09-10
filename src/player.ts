@@ -23,7 +23,9 @@ export class Player {
   crouching = false;
   onGround = false;
   health = 100;
+  armor = 0;
   alive = true;
+  sensitivity = 1;
   speedFactor = 0; // 0..1 how fast we're moving (for spread/bob)
   bobTime = 0;
   // Recoil is a view offset: it kicks toward the target quickly and the target decays back to zero.
@@ -45,6 +47,7 @@ export class Player {
     this.pos.copy(at);
     this.vel.set(0, 0, 0);
     this.health = 100;
+    this.armor = 100;
     this.alive = true;
     this.pitch = 0;
     this.recoilPitch = this.recoilYaw = 0;
@@ -64,8 +67,8 @@ export class Player {
   update(dt: number, input: Input, map: GameMap) {
     // Look
     if (this.alive) {
-      this.yaw -= input.mouseDX * SENSITIVITY;
-      this.pitch -= input.mouseDY * SENSITIVITY;
+      this.yaw -= input.mouseDX * SENSITIVITY * this.sensitivity;
+      this.pitch -= input.mouseDY * SENSITIVITY * this.sensitivity;
     }
     // Recoil: target decays (recovery), offset chases target (kick)
     const decay = Math.exp(-dt * 5);
@@ -152,9 +155,12 @@ export class Player {
     }
   }
 
+  /** Armor absorbs half of incoming damage until it is depleted. */
   damage(amount: number): boolean {
     if (!this.alive) return false;
-    this.health = Math.max(0, this.health - amount);
+    const absorbed = Math.min(this.armor, amount * 0.5);
+    this.armor -= absorbed;
+    this.health = Math.max(0, this.health - (amount - absorbed));
     if (this.health <= 0) {
       this.alive = false;
       this.vel.set(0, 0, 0);

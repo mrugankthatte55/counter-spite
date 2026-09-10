@@ -92,12 +92,16 @@ export class Enemy {
     this.torso.position.y = 0.9;
     const chest = tag(capsule(0.27, 0.42, camo), "body");
     chest.position.y = 0.34;
-    const vest = tag(boxMesh(0.5, 0.44, 0.34, dark), "body");
-    vest.position.set(0, 0.36, 0);
-    const pouchL = boxMesh(0.12, 0.12, 0.08, dark); pouchL.position.set(-0.13, 0.2, -0.2);
-    const pouchR = boxMesh(0.12, 0.12, 0.08, dark); pouchR.position.set(0.13, 0.2, -0.2);
-    const belt = boxMesh(0.5, 0.08, 0.36, dark); belt.position.y = 0.02;
-    this.torso.add(chest, vest, pouchL, pouchR, belt);
+    // Plate carrier: front and back plates outside the chest capsule, shoulder straps, pouches
+    const plateF = tag(boxMesh(0.42, 0.4, 0.08, dark), "body"); plateF.position.set(0, 0.36, -0.27);
+    const plateB = tag(boxMesh(0.42, 0.4, 0.08, dark), "body"); plateB.position.set(0, 0.36, 0.27);
+    const strapL = boxMesh(0.08, 0.12, 0.5, dark); strapL.position.set(-0.15, 0.58, 0);
+    const strapR = boxMesh(0.08, 0.12, 0.5, dark); strapR.position.set(0.15, 0.58, 0);
+    const pouchL = boxMesh(0.12, 0.13, 0.08, dark); pouchL.position.set(-0.12, 0.22, -0.34);
+    const pouchR = boxMesh(0.12, 0.13, 0.08, dark); pouchR.position.set(0.12, 0.22, -0.34);
+    const pouchC = boxMesh(0.1, 0.1, 0.07, dark); pouchC.position.set(0, 0.4, -0.34);
+    const belt = boxMesh(0.5, 0.08, 0.5, dark); belt.position.y = 0.02;
+    this.torso.add(chest, plateF, plateB, strapL, strapR, pouchL, pouchR, pouchC, belt);
 
     // ---- head ----
     const neck = capsule(0.07, 0.06, skin); neck.position.y = 0.62;
@@ -233,6 +237,16 @@ export class Enemy {
     this.rayc.far = dist;
     const hits = this.rayc.intersectObjects(this.map.solids, false);
     return hits.length === 0;
+  }
+
+  /** Static idle pose with breathing, used for the menu hero. */
+  idle(time: number) {
+    this.group.position.copy(this.pos);
+    this.group.rotation.set(0, this.yaw, 0);
+    this.torso.position.y = 0.9 + Math.sin(time * 1.4) * 0.012;
+    this.torso.rotation.set(-0.03 + Math.sin(time * 1.4) * 0.008, Math.sin(time * 0.35) * 0.06, 0);
+    this.hipL.rotation.x = 0.05; this.hipR.rotation.x = -0.05;
+    this.kneeL.rotation.x = this.kneeR.rotation.x = 0.05;
   }
 
   /** World-space muzzle position (for effects). */

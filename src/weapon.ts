@@ -212,6 +212,8 @@ export class WeaponState {
 export class Arsenal {
   weapons: WeaponState[];
   index = 0;
+  /** Weapon indices carried, in key order (1 = primary, 2 = secondary). */
+  slots: number[] = [0, 1];
   cooldown = 0;
   reloading = 0;
   spread = 0;
@@ -261,6 +263,18 @@ export class Arsenal {
   /** World-space muzzle position of the active weapon. */
   muzzleWorld() { return this.muzzles[this.index].getWorldPosition(new THREE.Vector3()); }
   ejectWorld() { return this.ejects[this.index].getWorldPosition(new THREE.Vector3()); }
+
+  /** Names of carried weapons in key order. */
+  get slotNames() { return this.slots.map((i) => this.weapons[i].def.name); }
+  get activeSlot() { return this.slots.indexOf(this.index); }
+
+  setLoadout(primary: number) {
+    this.slots = [primary, 1];
+  }
+
+  switchSlot(slot: number) {
+    if (slot >= 0 && slot < this.slots.length) this.switchTo(this.slots[slot]);
+  }
 
   switchTo(i: number) {
     if (i === this.index || i < 0 || i >= this.weapons.length) return;

@@ -11,8 +11,10 @@ import { Player } from "./player";
 import { Arsenal } from "./weapon";
 import { Enemy, BOT_NAMES } from "./enemy";
 import { Effects } from "./effects";
-import { HUD } from "./hud";
-import { sfx, unlockAudio } from "./audio";
+import { HUD, RadarBlip } from "./hud";
+import { Menu } from "./menu";
+import { sfx, unlockAudio, setVolume } from "./audio";
+import { loadSettings, loadCareer, saveCareer, Settings } from "./theme";
 
 const ROUND_SECONDS = 300;
 const BOT_COUNT = 5;
@@ -20,10 +22,14 @@ const RESPAWN_SECONDS = 3;
 const BASE_FOV = 75;
 
 type Quality = "high" | "medium" | "low";
-const AUTOPLAY = new URLSearchParams(location.search).has("autoplay");
-const gfxParam = new URLSearchParams(location.search).get("gfx") as Quality | null;
+const params = new URLSearchParams(location.search);
+const AUTOPLAY = params.has("autoplay");
+const gfxParam = params.get("gfx") as Quality | null;
 let quality: Quality = gfxParam || (localStorage.getItem("gfxQuality") as Quality) || "high";
 if (AUTOPLAY && !gfxParam) quality = "low";
+
+const settings: Settings = loadSettings();
+const career = loadCareer();
 
 // ---------- Renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -33,6 +39,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.8;
+renderer.domElement.className = "game";
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -45,23 +52,22 @@ scene.add(camera);
 const sky = new Sky();
 sky.scale.setScalar(3000);
 const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 38), THREE.MathUtils.degToRad(160));
-const skyU = sky.material.uniforms;
-skyU.turbidity.value = 4;
-skyU.rayleigh.value = 1.6;
-skyU.mieCoefficient.value = 0.006;
-skyU.mieDirectionalG.value = 0.85;
-skyU.sunPosition.value.copy(sunDir);
+const setSkyUniforms = (s: Sky) => {
+  const u = s.material.uniforms;
+  u.turbidity.value = 4;
+  u.rayleigh.value = 1.6;
+  u.mieCoefficient.value = 0.006;
+  u.mieDirectionalG.value = 0.85;
+  u.sunPosition.value.copy(sunDir);
+};
+setSkyUniforms(sky);
 scene.add(sky);
 {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = new THREE.Scene();
   const envSky = new Sky();
   envSky.scale.setScalar(3000);
-  envSky.material.uniforms.turbidity.value = 4;
-  envSky.material.uniforms.rayleigh.value = 1.6;
-  envSky.material.uniforms.mieCoefficient.value = 0.006;
-  envSky.material.uniforms.mieDirectionalG.value = 0.85;
-  envSky.material.uniforms.sunPosition.value.copy(sunDir);
+  setSkyUniforms(envSky);
   envScene.add(envSky);
   scene.environment = pmrem.fromScene(envScene, 0.02).texture;
   scene.environmentIntensity = 0.35;
@@ -87,9 +93,13 @@ scene.add(map.group);
 
 const input = new Input(renderer.domElement);
 const player = new Player(camera);
+player.sensitivity = settings.sensitivity;
 const arsenal = new Arsenal(camera);
+arsenal.setLoadout(settings.primary);
 const effects = new Effects(scene);
 const hud = new HUD();
+hud.buildMinimap(map.colliders, 40);
+setVolume(settings.volume);
 
 const enemies: Enemy[] = [];
 for (let i = 0; i < BOT_COUNT; i++) {
@@ -97,16 +107,23 @@ for (let i = 0; i < BOT_COUNT; i++) {
   scene.add(e.group);
   enemies.push(e);
 }
+const radarTimers = new Map<Enemy, number>();
+
+// Menu hero: a posed operator in front of the mid building, framed by a slow camera drift
+const hero = new Enemy("Hero", map);
+hero.pos.set(3, 0, -10.2);
+hero.yaw = 0; // face -z, toward the menu camera and into the sunlight
+scene.add(hero.group);
+const heroLook = new THREE.Vector3(3, 1.15, -10.2);
 
 // ---------- Post-processing / quality ----------
 let composer: EffectComposer | null = null;
-let gtao: GTAOPass | null = null;
 
 function applyQuality(q: Quality) {
   quality = q;
   if (!AUTOPLAY) localStorage.setItem("gfxQuality", q);
   const w = window.innerWidth, h = window.innerHeight;
-  if (composer) { composer.dispose(); composer = null; gtao = null; }
+  if (composer) { composer.dispose(); composer = null; }
   const shadowSize = q === "high" ? 4096 : q === "medium" ? 2048 : 1024;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
@@ -116,23 +133,17 @@ function applyQuality(q: Quality) {
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
   if (q === "high") {
-    gtao = new GTAOPass(scene, camera, w, h);
+    const gtao = new GTAOPass(scene, camera, w, h);
     gtao.output = GTAOPass.OUTPUT.Default;
     gtao.blendIntensity = 0.9;
     gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
     gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 12 });
     composer.addPass(gtao);
   }
-  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.5, 0.92);
-  composer.addPass(bloom);
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.5, 0.92));
   composer.addPass(new OutputPass());
 }
 applyQuality(quality);
-
-const qualitySelect = document.getElementById("quality") as HTMLSelectElement;
-qualitySelect.value = quality;
-qualitySelect.addEventListener("change", () => applyQuality(qualitySelect.value as Quality));
-qualitySelect.addEventListener("click", (e) => e.stopPropagation());
 
 // ---------- Game state ----------
 let scoreCT = 0;
@@ -141,11 +152,24 @@ let roundTime = ROUND_SECONDS;
 let roundOver = false;
 let playerRespawn = 0;
 let paused = true;
-let totalKills = 0;
-let totalDeaths = 0;
+let sessionKills = 0;
+let sessionDeaths = 0;
+let streak = 0;
+let showFps = false;
+let clock = 0;
 
-const overlay = document.getElementById("overlay")!;
-const menuStats = document.getElementById("menuStats")!;
+const menu = new Menu(settings, {
+  onPlay: () => { unlockAudio(); input.lock(); },
+  onSettingsChanged: (s) => {
+    player.sensitivity = s.sensitivity;
+    setVolume(s.volume);
+    if (arsenal.slots[0] !== s.primary) { arsenal.setLoadout(s.primary); arsenal.switchTo(s.primary); }
+  },
+  onQualityChanged: (q) => applyQuality(q as Quality),
+  getQuality: () => quality,
+  getCareer: () => career,
+  getSession: () => ({ kills: sessionKills, deaths: sessionDeaths, streak }),
+});
 
 function randomSpawn(list: THREE.Vector3[], avoid?: THREE.Vector3) {
   let best = list[Math.floor(Math.random() * list.length)];
@@ -162,7 +186,7 @@ function spawnPlayer() {
   const at = randomSpawn(map.ctSpawns);
   player.spawn(at, new THREE.Vector3(0, 0, 0));
   arsenal.refillAll();
-  arsenal.switchTo(0);
+  arsenal.switchTo(arsenal.slots[0]);
 }
 
 function startRound() {
@@ -172,34 +196,27 @@ function startRound() {
   roundOver = false;
   spawnPlayer();
   enemies.forEach((e) => e.spawn(randomSpawn(map.tSpawns, player.pos)));
-  if (!paused) hud.showMessage("ROUND START", "Eliminate the terrorists", 2.5);
+  if (!paused) hud.showMessage("ROUND <em>START</em>", "ELIMINATE THE TERRORISTS", 2.5);
 }
 
 function endRound() {
   roundOver = true;
   const win = scoreCT > scoreT;
   const tie = scoreCT === scoreT;
-  hud.showMessage(tie ? "DRAW" : win ? "COUNTER-TERRORISTS WIN" : "TERRORISTS WIN", "Next round in 6 seconds", 6);
+  if (win) career.roundsWon++; else if (tie) career.roundsDrawn++; else career.roundsLost++;
+  saveCareer(career);
+  hud.showMessage(tie ? "<em>DRAW</em>" : win ? "COUNTER-TERRORISTS <em>WIN</em>" : "TERRORISTS <em>WIN</em>", "NEXT ROUND IN 6 SECONDS", 6);
   if (win) sfx.roundWin(); else sfx.roundLose();
   setTimeout(startRound, 6000);
 }
 
 // ---------- Pointer lock / menu ----------
-document.getElementById("playBtn")!.addEventListener("click", () => {
-  unlockAudio();
-  input.lock();
-});
-overlay.addEventListener("click", (e) => {
-  const t = e.target as HTMLElement;
-  if (t.id !== "playBtn" && t.tagName !== "SELECT" && t.tagName !== "LABEL") { unlockAudio(); input.lock(); }
-});
 document.addEventListener("pointerlockchange", () => {
   paused = !input.locked;
-  overlay.classList.toggle("hidden", !paused);
-  if (paused) {
-    menuStats.textContent = `Kills: ${totalKills}   Deaths: ${totalDeaths}   K/D: ${(totalKills / Math.max(1, totalDeaths)).toFixed(2)}`;
-    document.getElementById("playBtn")!.textContent = "CLICK TO RESUME";
-  }
+  menu.show(paused);
+  arsenal.viewmodel.visible = !paused;
+  hero.group.visible = paused;
+  document.getElementById("hud")!.classList.toggle("hidden", paused);
 });
 
 window.addEventListener("resize", () => {
@@ -246,8 +263,13 @@ function fireWeapon() {
       if (killed) {
         sfx.kill();
         scoreCT++;
-        totalKills++;
-        hud.feed("You", enemy.name, part === "head" ? `${def.name} ★` : def.name, true, false);
+        sessionKills++;
+        streak++;
+        career.kills++;
+        if (part === "head") career.headshots++;
+        if (streak > career.bestStreak) career.bestStreak = streak;
+        saveCareer(career);
+        hud.feed("YOU", enemy.name.toUpperCase(), def.name, true, false, part === "head");
       } else sfx.hit();
       effects.impact(h.point, dir.clone().negate(), true);
     } else {
@@ -263,6 +285,21 @@ function fireWeapon() {
   effects.shell(arsenal.ejectWorld(), right, up);
   const recoil = arsenal.shotRecoil();
   player.addRecoil(recoil.pitch, recoil.yaw);
+}
+
+// ---------- Menu camera ----------
+function updateMenuCamera(dt: number) {
+  clock += dt;
+  const a = Math.sin(clock * 0.18) * 0.45;
+  const radius = 2.9 + Math.sin(clock * 0.11) * 0.2;
+  camera.position.set(heroLook.x + Math.sin(a) * radius, 1.45 + Math.sin(clock * 0.23) * 0.08, heroLook.z - Math.cos(a) * radius);
+  camera.rotation.order = "YXZ";
+  camera.lookAt(heroLook.x + 1.15, heroLook.y - 0.05, heroLook.z);
+  camera.fov += (58 - camera.fov) * Math.min(1, dt * 4);
+  camera.updateProjectionMatrix();
+  hero.idle(clock);
+  sun.target.position.copy(heroLook).setY(0);
+  sun.position.copy(sunDir).multiplyScalar(80).add(sun.target.position);
 }
 
 // ---------- Main loop ----------
@@ -281,23 +318,30 @@ function frame(now: number) {
   fpsAcc += dt; fpsFrames++;
   if (fpsAcc >= 0.5) { hud.setFps(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; }
 
+  if (paused) {
+    updateMenuCamera(dt);
+    effects.update(dt);
+    render();
+    input.endFrame();
+    return;
+  }
+
   // Keep the shadow frustum centred on the player so the map stays sharp
   sun.target.position.set(player.pos.x, 0, player.pos.z);
   sun.position.copy(sunDir).multiplyScalar(80).add(sun.target.position);
-
-  if (paused) { render(); input.endFrame(); return; }
 
   if (!roundOver) {
     roundTime -= dt;
     if (roundTime <= 0) { roundTime = 0; endRound(); }
   }
 
+  if (input.justPressed("KeyF")) { showFps = !showFps; document.getElementById("fps")!.classList.toggle("hidden", !showFps); }
+
   player.update(dt, input, map);
   if (player.alive) {
-    if (input.justPressed("Digit1")) arsenal.switchTo(0);
-    if (input.justPressed("Digit2")) arsenal.switchTo(1);
-    if (input.justPressed("Digit3")) arsenal.switchTo(2);
-    if (input.wheel !== 0) arsenal.switchTo((arsenal.index + input.wheel + arsenal.weapons.length) % arsenal.weapons.length);
+    if (input.justPressed("Digit1")) arsenal.switchSlot(0);
+    if (input.justPressed("Digit2")) arsenal.switchSlot(1);
+    if (input.wheel !== 0) arsenal.switchSlot((arsenal.activeSlot + input.wheel + arsenal.slots.length) % arsenal.slots.length);
     if (input.justPressed("KeyR")) arsenal.reload();
     if (arsenal.def.scope && arsenal.reloading <= 0 && (input.justClicked2() || input.justPressed("KeyQ"))) {
       arsenal.scoped = !arsenal.scoped;
@@ -318,6 +362,7 @@ function frame(now: number) {
     if (!e.alive && e.respawnTimer <= 0 && !roundOver) e.spawn(randomSpawn(map.tSpawns, player.pos));
     const shot = e.update(dt, player.pos, eye, player.alive && !roundOver, player.speedFactor);
     if (shot) {
+      radarTimers.set(e, 2.5);
       effects.tracer(shot.from, shot.to);
       effects.flash(shot.from);
       if (shot.hit && player.alive) {
@@ -327,11 +372,14 @@ function frame(now: number) {
         if (died) {
           sfx.death();
           scoreT++;
-          totalDeaths++;
+          sessionDeaths++;
+          streak = 0;
+          career.deaths++;
+          saveCareer(career);
           playerRespawn = RESPAWN_SECONDS;
           arsenal.scoped = false;
-          hud.feed(e.name, "You", "AK-47", false, true);
-          hud.showMessage("YOU DIED", `Respawning in ${RESPAWN_SECONDS}s`, RESPAWN_SECONDS);
+          hud.feed(e.name.toUpperCase(), "YOU", "AK-47", false, true);
+          hud.showMessage("YOU <em>DIED</em>", `RESPAWNING IN ${RESPAWN_SECONDS}S`, RESPAWN_SECONDS);
         }
       } else if (!shot.hit) {
         raycaster.set(shot.from, shot.to.clone().sub(shot.from).normalize());
@@ -347,8 +395,18 @@ function frame(now: number) {
 
   effects.update(dt);
 
-  hud.setHealth(player.health);
-  hud.setAmmo(arsenal.def.name, arsenal.current.mag, arsenal.current.reserve, arsenal.reloading > 0);
+  // HUD
+  const blips: RadarBlip[] = [];
+  for (const [e, t] of radarTimers) {
+    const left = t - dt;
+    if (left <= 0 || !e.alive) { radarTimers.delete(e); continue; }
+    radarTimers.set(e, left);
+    blips.push({ x: e.pos.x, z: e.pos.z, strength: left / 2.5 });
+  }
+  hud.drawMinimap(player.pos.x, player.pos.z, player.yaw, blips);
+  hud.setHealth(player.health, player.armor);
+  hud.setAmmo(arsenal.current.mag, arsenal.current.reserve, arsenal.reloading > 0);
+  hud.setWeapons(arsenal.slotNames, arsenal.activeSlot);
   hud.setScore(scoreCT, scoreT, roundTime);
   hud.setSpread(arsenal.totalSpread(player.speedFactor, player.crouching, player.onGround), arsenal.scoped);
   hud.update(dt);
@@ -357,11 +415,19 @@ function frame(now: number) {
   input.endFrame();
 }
 
+document.getElementById("fps")!.classList.add("hidden");
+
 if (AUTOPLAY) {
-  overlay.classList.add("hidden");
+  document.getElementById("menu")!.classList.add("hidden");
+  arsenal.viewmodel.visible = true;
+  hero.group.visible = false;
   const origEnd = input.endFrame.bind(input);
   input.endFrame = () => { origEnd(); input.mouseDown = true; input.keys.add("KeyW"); input.mouseDX = 6; };
-  setTimeout(() => console.log(`[autoplay] kills=${totalKills} deaths=${totalDeaths} hp=${player.health} pos=${player.pos.x.toFixed(1)},${player.pos.z.toFixed(1)} bots=${enemies.filter((e) => e.alive).length}`), 3500);
+  setTimeout(() => console.log(`[autoplay] kills=${sessionKills} deaths=${sessionDeaths} hp=${player.health} pos=${player.pos.x.toFixed(1)},${player.pos.z.toFixed(1)} bots=${enemies.filter((e) => e.alive).length}`), 3500);
+} else {
+  arsenal.viewmodel.visible = false;
+  document.getElementById("hud")!.classList.add("hidden");
+  menu.show(true);
 }
 
 startRound();

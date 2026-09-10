@@ -7,7 +7,7 @@ function ensure(): AudioContext {
   if (!ctx) {
     ctx = new AudioContext();
     master = ctx.createGain();
-    master.gain.value = 0.5;
+    master.gain.value = volume;
     master.connect(ctx.destination);
     const len = ctx.sampleRate * 1;
     noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -20,6 +20,12 @@ function ensure(): AudioContext {
 
 export function unlockAudio() {
   ensure();
+}
+
+let volume = 0.5;
+export function setVolume(v: number) {
+  volume = Math.max(0, Math.min(1, v));
+  if (master) master.gain.value = volume;
 }
 
 function noise(duration: number, gain: number, filterFreq: number, filterQ = 1, type: BiquadFilterType = "lowpass") {
